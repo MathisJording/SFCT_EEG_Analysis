@@ -1,0 +1,211 @@
+---
+title: "Supplementary Material: A common neural mechanism underlies experiences of passage of time"
+author:
+- Mathis Jording, Mark Wünsche, Megha Madathil, David H.V. Vogel,
+- Shivakumar Viswanathan, Kai Vogeley
+date: "`r format(Sys.time(), '%d.%m.%y')`"
+output:
+  pdf_document:
+    keep_tex: true
+  pdf: default
+header-includes:
+- \usepackage{float}
+- \usepackage{fvextra}
+- \usepackage{color}
+- \DefineVerbatimEnvironment{Highlighting}{Verbatim}{ commandchars=\\\{\}, breaklines,
+  breakanywhere, fontsize=\small }
+- \DefineVerbatimEnvironment{verbatim}{Verbatim}{ breaklines, breakanywhere, fontsize=\small
+  }
+params:
+  output_dir: D:/EEGST data/output
+---
+
+
+<!--- Markdown settings -->
+```{r setup, include=FALSE}
+
+# set size of figures
+fig_width = 160
+fig_height = 100
+
+knitr::opts_chunk$set(echo = FALSE,
+                      fig.align = 'center',
+                      fig_crop = FALSE,
+                      fig.pos = "H",
+                      fig.width = fig_width / 25.4,
+                      fig.height = fig_height / 25.4)
+
+```
+
+<!--- Packages -->
+```{r Packages, include = FALSE, message=FALSE, warning=FALSE}
+# Change 'message=TRUE' & 'warning=TRUE' for messages and warnings
+
+# Core
+library("knitr")
+library("grid")
+
+# Modeling / statistics
+library("lme4")
+library("emmeans")
+library("psych")
+
+# Data manipulation
+library("plyr")
+library("tidyverse")  # loads dplyr, ggplot2, tibble, etc.
+
+# Plotting
+library("ggsignif")
+library("gridExtra")
+library("ggh4x")
+library("scales")
+library("ggforce")
+library("gridExtra")
+library("egg")
+library("gtable")
+
+# Utilities
+library("Rmisc")
+```
+
+<!--- Directories and settings -->
+```{r directories, results="hide"}
+# data folders
+#dir.data = file.path("D:", "EEGST data")
+
+dir.data = file.path("C:", "Eigene Dateien", "1. Projekte", "Virtualtimes",
+                     "Projekte und Studien", "sfct VR EEG", "Manuscript & publication",
+                     "white paper", "upload", "data")
+
+# output folders (this can be changed if output should be stored somewhere else)
+#dir.output = file.path(dir.data, "output")
+
+dir.output = file.path("C:", "Eigene Dateien", "1. Projekte", "Virtualtimes",
+                       "Projekte und Studien", "sfct VR EEG", "Manuscript & publication",
+                       "white paper", "upload", "output")
+
+```
+
+
+\newpage
+
+## Effect of velocity and density on potjs
+
+```{r analysing_PoTJs}
+
+tables <- readRDS(file.path(dir.output, "tables", "tables_potj.rds"))
+
+
+# Printing results as tables
+knitr::kable(tables$anova,
+             caption = "Likelihood-Ratio test for effects of velocity and density")
+
+knitr::kable(tables$coefficients,
+             caption = "Model summary velxden")
+
+knitr::kable(tables$pairwise,
+             caption = "Pairwise comparisons of PoTJs (Tukey corrected)",
+             digits = 3)
+
+```
+
+
+\newpage
+# EEG analysis
+
+## Occipital power differences between RS and SF
+
+```{r data_face_validity, include=TRUE}
+
+tables <- readRDS(file.path(dir.output, "tables", "tables_postamp.rds"))
+
+# Printing results as tables
+knitr::kable(tables$anova,
+             caption = "Likelihood-Ratio test mean amplitude in posterior channels")
+
+knitr::kable(tables$coefficient,
+             caption = "Model summary postamp.1")
+
+```
+
+
+\newpage
+
+
+## Epoch feature correlations
+```{r feat_corr_rs_sf}
+
+tables <- readRDS(file.path(dir.output, "tables", "tables_featurecorrelations.rds"))
+
+
+# printing tables
+knitr::kable(tables$anova,
+             caption = "Likelihood-Ratio of feature correlations")
+
+knitr::kable(tables$pairwise,
+             caption = "Pairwise comparisons of feature similarity (Tukey corrected)",
+             digits = 3)
+
+```
+
+\newpage
+
+```{r feat_corr_sf_variants}
+
+tables <- readRDS(file.path(dir.output, "tables", "tables_featcorrs_variants.rds"))
+
+# -----
+# VELOCITY
+
+
+kable(tables$anova_same_vel, caption = "Likelihood-Ratio Test: comparing epoch feature similarity between different and same velocity", digits = 3)
+
+kable(tables$anova_vel, caption = "Likelihood-Ratio Test: comparing epoch feature similarity between velocity variants", digits = 3)
+
+
+# -----
+# DENSITY
+
+kable(tables$anova_same_den, caption = "Likelihood-Ratio Test: comparing epoch feature similarity between different and same density", digits = 3)
+
+kable(tables$anova_den, caption = "Likelihood-Ratio Test: comparing epoch feature similarity between density variants", digits = 3)
+```
+
+
+
+\newpage
+
+## Prediction of PoT between velocity / density levels 
+
+```{r predictions_between_indv_levels, comment = ""}
+
+tables <- readRDS(file.path(dir.output, "tables", "tables_prediction_velden.rds"))
+
+          
+kable(tables$anova_vel, caption = "Likelihood-Ratio Test: comparing information quality between Velocity variants", digits = 3)
+kable(tables$pairwise_vel,
+      caption = "Pairwise comparisons for velocity (Tukey corrected)",
+      digits = 3)
+
+kable(tables$anova_den, caption = "Likelihood-Ratio Test: comparing information quality between Density variants", digits = 3)
+kable(tables$pairwise_den,
+      caption = "Pairwise comparisons for density (Tukey corrected)",
+      digits = 3)
+
+```
+
+\newpage
+
+## Prediction of PoT between velocity-density combinations 
+
+```{r predictions_between_level_comb, comment = ""}
+
+tables <- readRDS(file.path(dir.output, "tables", "tables_prediction_comb.rds"))
+
+
+kable(tables$anova, caption = "Likelihood-Ratio Test: comparing information quality between Velocity*Density combinations", digits = 3)
+kable(tables$pairwise,
+      caption = "Pairwise comparisons for velocity-density combinations (Tukey corrected)",
+      digits = 3)
+```
+

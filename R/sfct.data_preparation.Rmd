@@ -1,0 +1,418 @@
+---
+title: "Data preperation R-Analysis"
+author:
+- Mathis Jording, Mark Wünsche, Megha Madathil, David H.V. Vogel,
+- Shivakumar Viswanathan, Kai Vogeley
+date: "`r format(Sys.time(), '%d.%m.%y')`"
+output:
+  pdf_document:
+    keep_tex: true
+  pdf: default
+header-includes:
+- \usepackage{float}
+- \usepackage{fvextra}
+- \usepackage{color}
+- \DefineVerbatimEnvironment{Highlighting}{Verbatim}{ commandchars=\\\{\}, breaklines,
+  breakanywhere, fontsize=\small }
+- \DefineVerbatimEnvironment{verbatim}{Verbatim}{ breaklines, breakanywhere, fontsize=\small
+  }
+params:
+  output_dir: D:/EEGST data/output
+---
+
+
+<!--- Markdown settings -->
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+<!--- Packages -->
+```{r Packages, include = FALSE, message=FALSE, warning=FALSE}
+# Change 'message=TRUE' & 'warning=TRUE' for messages and warnings
+
+library("tidyverse")  # loads dplyr, ggplot2, tibble, etc.
+
+```
+
+<!--- Directories and settings -->
+```{r directories, results="hide"}
+# data folders
+dir.data = file.path("D:", "EEGST data")
+dir.data.group = file.path(dir.data, "group_level")
+```
+
+
+
+<!--- Preparing subject (e.g. demografic) and behavioral data -->
+```{r loading_data, include = FALSE, results="hide"}
+
+# Load demografic data
+data.subjects_all  <- read.csv(file = file.path(dir.data.group, "demografic_availabledata.csv"),
+                           colClasses=c("subject"="character",
+                                        "included"="logical",
+                                        "group"="factor",
+                                        "gender"="factor",
+                                        "age"="numeric",
+                                        "handedness"="numeric",
+                                        "aq"="numeric",
+                                        "bdi"="numeric",
+                                        "css"="numeric",
+                                        "available_rs_snapshots"="numeric",
+                                        "available_rs_snapshots_pro"="numeric",
+                                        "max_nc_snapshot_numbers"="numeric",
+                                        "available_nc_snapshots"="numeric",
+                                        "available_nc_snapshots_pro"="numeric",
+                                        "rs"="numeric",
+                                        "cc.vel0.den1"="numeric",
+                                        "cc.vel0.den2"="numeric",
+                                        "cc.vel1.den1"="numeric",
+                                        "cc.vel1.den2"="numeric",
+                                        "cc.vel2.den1"="numeric",
+                                        "cc.vel2.den2"="numeric",
+                                        "nc.vel0.den1"="numeric",
+                                        "nc.vel0.den2"="numeric",
+                                        "nc.vel1.den1"="numeric",
+                                        "nc.vel1.den2"="numeric",
+                                        "nc.vel2.den1"="numeric",
+                                        "nc.vel2.den2"="numeric"),
+                           sep = ",")
+
+# Change subject number to factor
+data.subjects_all$subject = factor(as.numeric(data.subjects_all$subject))
+
+# specify group and handedness levels
+data.subjects_all$group = revalue(data.subjects_all$group, c("1"="con", "2"="dep"))
+
+# turn handedness into factor
+data.subjects_all$handedness = as.factor(data.subjects_all$handedness)
+# change factor levels to right / left / both (suppress messages in case one level, e.g. 'both' is not present in data)
+data.subjects_all$handedness = suppressMessages(revalue(data.subjects_all$handedness, c("0"="right", "1"="left", "2"="both")))
+
+# Subset control group
+# only keep subset of control participants
+data.subjects = subset(data.subjects_all, group == "con")
+
+# delete "con"-column
+data.subjects = subset(data.subjects, select = -group)
+
+# Save separate dataframe for excluded participants
+data.subjects_excluded = subset(data.subjects, included == FALSE)
+save(data.subjects_excluded, file = file.path(dir.data.group, "data.subjects_excluded.Rda"))
+     
+# Save dataframe for included participants
+data.subjects = subset(data.subjects, included == TRUE)
+save(data.subjects, file = file.path(dir.data.group, "data.subjects.Rda"))
+
+
+# -----
+# Trialwise data
+
+# load behavioral data
+datafile = file.path(dir.data.group, "ct_behav.group.csv")
+data.trials <- read_csv(file = datafile, col_names = TRUE) #, col_types = trials_colclasses)
+
+# Change subject number to factor
+data.trials$subject = as.factor(data.trials$subject)
+
+# specify type of rating by changing 'time_rating' to 'PoTJ'
+names(data.trials)[names(data.trials) == 'time_rating'] <- 'PoTJ'
+
+# use equidistant steps for velocity levels (0 -> 0 / 20000 -> 1 / 80000 -> 2)
+data.trials$velocity = sqrt(data.trials$velocity / 20000)
+# use equidistant steps for density levels (250 -> 1 / 1000 -> 2)
+data.trials$density = sqrt(data.trials$density / 250)
+
+# Turn velocity into factor and use correct labels
+data.trials$velocity = ordered(c("zero", "slow", "fast")[data.trials$velocity+1], levels = c("zero", "slow", "fast"))
+# Turn velocity into factor and use correct labels
+data.trials$density = ordered(c("few", "many")[data.trials$density], levels = c("few", "many"))
+
+# only keep data from included subjects
+data.trials = subset(data.trials, subject %in% unique(data.subjects$subject))
+
+# save trial data
+save(data.trials, file = file.path(dir.data.group, "data.trials.Rda"))
+
+```
+
+
+<!--- preparing data about mean amplitude in posterior channels-->
+```{r}
+
+# load data
+datafile.epochs = file.path(dir.data.group, "feature_and_ratings.group.csv")
+data.epochs <- read.csv(file = datafile.epochs, sep = ",")
+data.epochs$subject = as.factor(data.epochs$subject)
+
+# find all columns for posterior channels
+all_channels = colnames(data.epochs)
+posterior_channels = which(grepl("O", all_channels, fixed = TRUE) & grepl("_A", all_channels, fixed = TRUE))
+
+# build new data set
+data.epochs.occamp = data.epochs[,c("subject", "condition", "trial_nr")]
+# add column for mean posterior amplitude
+data.epochs.occamp$posterior_meanamp = rowMeans(data.epochs[,posterior_channels])
+# us "rs" for all resting state epochs
+data.epochs.occamp$condition[grepl("rs", data.epochs.occamp$condition)] = "rs"
+# us "starfield" for all starfield color tracking task epochs
+data.epochs.occamp$condition[grepl("starfield", data.epochs.occamp$condition)] = "starfield"
+
+# saving
+save(data.epochs.occamp, file = file.path(dir.data.group, "data.epochs.occamp.Rda"))
+```
+
+
+
+
+
+## Epoch feature correlations
+```{r feat_corr_rs_sf}
+# =====
+# Preparations
+
+# Load corrleation matrices of each participant and prepare dataframe
+group_corrs_wide = data.frame()
+
+# Loop through all participants and load and append data
+for (subject in data.subjects$subject){
+
+  # subject number with leading zeros
+  subj_string = sprintf("%03d", as.numeric(subject))
+
+  # load data
+  subj_corr_matrix = read.csv(file = file.path(dir.data, "preprocessing", subj_string, "14a_cond_corrmatrix.csv"), sep = ",")
+
+  # isolate triangle containing data
+  data_triangle = subj_corr_matrix[-c(1)]
+  data_triangle[upper.tri(data_triangle, diag = FALSE)] = NA
+
+  # combine columns for subject, cond_a and data triangle
+  subj_corr_matrix = cbind(subject = rep(subject, nrow(subj_corr_matrix)),cond_a = subj_corr_matrix$level_0, data_triangle)
+
+  # append subject correlation matrix to other correlation matrices
+  group_corrs_wide = rbind(group_corrs_wide, subj_corr_matrix)
+}
+
+# turn dataframe to long format
+group_corrs = group_corrs_wide %>%
+  pivot_longer(cols = other:vel2.den2,
+               names_to = "cond_b",
+               values_to = "corr")
+
+# delete rows where corr is NAs
+group_corrs = subset(group_corrs, !(is.na(corr)))
+
+
+# Create a dataframe containing only correlations between specific velocity-density combinations
+
+# change strings in cond_b to match terms from cond_a
+group_corrs$cond_b <- gsub('\\.', '/', group_corrs$cond_b)
+
+
+# -----
+# Prepare datasets for Analysis of starfield condition levels
+vel_states = c("vel0", "vel1", "vel2")
+den_states = c("den1", "den2")
+
+# Add a column specifying the velocity level
+group_corrs$velocity = rep(NA, nrow(group_corrs))
+for (i in 1:length(vel_states)) {
+  group_corrs$velocity[str_detect(group_corrs$cond_a, vel_states[i]) & str_detect(group_corrs$cond_b, vel_states[i])] = i - 1
+}
+group_corrs$velocity = factor(group_corrs$velocity, levels = c(0, 1, 2))
+
+# Add a column specifying the density level
+group_corrs$density = rep(NA, nrow(group_corrs))
+for (i in 1:length(den_states)) {
+  group_corrs$density[str_detect(group_corrs$cond_a, den_states[i]) & str_detect(group_corrs$cond_b, den_states[i])] = i
+}
+group_corrs$density = factor(group_corrs$density, levels = c(1, 2))
+
+# exclude all correlations with "other" epochs
+group_corrs = subset(group_corrs, cond_a != "other" & cond_b != "other")
+
+#determine whether velocity or density level are the same on both sides
+group_corrs$samevel = !(is.na(group_corrs$velocity))
+group_corrs$sameden = !(is.na(group_corrs$density))
+
+# add a column specifying the type of epoch ("rs", "starfield" or "Other", e.g. breaks etc.)
+group_corrs$type = "starfield"
+group_corrs$type[str_detect(group_corrs$cond_a, "rs")] = "rs"
+
+# Create new variable containing information about similarity
+similarity = factor(rep('Diff', nrow(group_corrs)), levels = c('Diff', 'SameVel', 'SameDen', 'SameVel-SameDen'))
+similarity[group_corrs$samevel & !(group_corrs$sameden)] = 'SameVel'
+similarity[group_corrs$sameden & !(group_corrs$samevel)] = 'SameDen'
+similarity[group_corrs$samevel & group_corrs$sameden] = 'SameVel-SameDen'
+group_corrs$similarity <- similarity
+
+
+# mark every correlation as Diff-SF
+group_corrs$comparison = factor(rep("Diff. SF", nrow(group_corrs)), levels = c("RS - RS", "RS - SF", "Diff. SF", "Same SF"))
+
+# Identify RS - RS pairs
+group_corrs$comparison[group_corrs$cond_a == "rs" & group_corrs$cond_b == "rs"] = "RS - RS"
+# Identify RS - SF pairs
+group_corrs$comparison[(group_corrs$cond_a == "rs" | group_corrs$cond_b == "rs") & !(group_corrs$comparison == "RS - RS")] = "RS - SF"
+# Identify Same SF pairs
+group_corrs$comparison[group_corrs$similarity == "SameVel-SameDen"] = "Same SF"
+
+
+
+
+# save epoch feature correlations
+#save(group_corrs.type, file = file.path(dir.data.group, "epoch_feature_correlations.Rda"))
+save(group_corrs, file = file.path(dir.data.group, "epoch_feature_correlations.Rda"))
+
+```
+
+
+
+
+```{r}
+
+# -----
+# preparing data from validation / generalization between velocity levels
+
+# load crossvalidation results
+val_vel <- read.csv(file = file.path(dir.data.group, "crossvalidation_velocity_group_correlations.csv"), sep = ",")
+
+# load generalization results
+gen_vel <- read.csv(file = file.path(dir.data.group, "generalisation_velocity_group_correlations.csv"), sep = ",")
+
+# fishers r-to-z transform
+val_vel[,-1] = atanh(val_vel[,-1])
+gen_vel[,-1] = atanh(gen_vel[,-1])
+
+# preparing cross-validation data
+val_vel_long <- val_vel %>%
+  pivot_longer(!X, names_to = "set", values_to = "z") %>%
+  add_column(type = "validation", .after = "X") %>%
+  add_column(vel = rep(c(0, 1, 2), nrow(val_vel)), .after = "type") %>%
+  select(!set) %>%
+  dplyr::rename(subject = X)
+
+# preparing generalization data
+gen_vel_long <- gen_vel %>%
+  rowwise() %>%
+  dplyr::mutate(vel0 = mean(c_across(c(X0, X1)), na.rm = TRUE),
+                vel1 = mean(c_across(c(X2, X3)), na.rm = TRUE),
+                vel2 = mean(c_across(c(X4, X5)), na.rm = TRUE)) %>%
+  ungroup() %>%
+  select(!(X0:X5)) %>%
+  pivot_longer(!X, names_to = "set", values_to = "z") %>%
+  add_column(type = "generalization", .after = "X") %>%
+  add_column(vel = rep(c(0, 1, 2), nrow(gen_vel)), .after = "type") %>%
+  select(!set) %>%
+  dplyr::rename(subject = X)
+
+# merging validation and generalization data
+data_vel = rbind(val_vel_long, gen_vel_long)
+
+# changing order of levels for factor type
+data_vel$type <- factor(data_vel$type, levels = c("validation", "generalization"))
+
+# Turn velocity into factor and use correct labels
+data_vel$vel = ordered(c("zero", "slow", "fast")[data_vel$vel+1], levels = c("zero", "slow", "fast"))
+
+# save velocity data (validation & generalization)
+save(data_vel, file = file.path(dir.data.group, "data_vel.Rda"))
+
+
+# -----
+# # preparing data from validation / generalization between density levels
+
+# load validation results
+val_den <- read.csv(file = file.path(dir.data.group, "crossvalidation_density_group_correlations.csv"), sep = ",")
+
+# load generalization results
+gen_den <- read.csv(file = file.path(dir.data.group, "generalisation_density_group_correlations.csv"), sep = ",")
+
+# fishers r-to-z transform
+val_den[,-1] = atanh(val_den[,-1])
+gen_den[,-1] = atanh(gen_den[,-1])
+
+# preparing cross-validation data
+val_den_long <- val_den %>%
+  pivot_longer(!X, names_to = "set", values_to = "z") %>%
+  add_column(type = "validation", .after = "X") %>%
+  add_column(den = rep(c(1, 2), nrow(val_den)), .after = "type") %>%
+  select(!set) %>%
+  dplyr::rename(subject = X)
+
+# preparing generalization data
+gen_den_long <- gen_den %>%
+  pivot_longer(!X, names_to = "set", values_to = "z") %>%
+  add_column(type = "generalization", .after = "X") %>%
+  add_column(den = rep(c(1, 2), nrow(gen_den)), .after = "type") %>%
+  select(!set) %>%
+  dplyr::rename(subject = X)
+
+# merging validation and generalization data
+data_den = rbind(val_den_long, gen_den_long)
+
+# changing order of levels for factor type
+data_den$type <- factor(data_den$type, levels = c("validation", "generalization"))
+
+# Turn density into factor and use correct labels
+data_den$den = ordered(c("few", "many")[data_den$den], levels = c("few", "many"))
+
+# save density data (validation & generalization)
+save(data_den, file = file.path(dir.data.group, "data_den.Rda"))
+
+
+# -----
+# # preparing data from validation / generalization between velocity-density combinations
+
+# load crossvalidation results
+val_velden <- read.csv(file = file.path(dir.data.group, "crossvalidation_velocity-density_group_correlations.csv"), sep = ",")
+
+# load generalization results
+gen_velden <- read.csv(file = file.path(dir.data.group, "generalisation_velocity-density_group_correlations.csv"), sep = ",")
+
+# fishers r-to-z transform
+val_velden[,-1] = atanh(val_velden[,-1])
+gen_velden[,-1] = atanh(gen_velden[,-1])
+
+# preparing cross-validation data
+val_velden_long <- val_velden %>%
+  pivot_longer(!X, names_to = "set", values_to = "z") %>%
+  add_column(type = "validation", .after = "X") %>%
+  add_column(vel = rep(rep(c(0, 1, 2), 2), nrow(val_velden)), .after = "type") %>%
+  add_column(den = rep(rep(c(1, 2), 3), nrow(val_velden)), .after = "vel") %>%
+  select(!set) %>%
+  dplyr::rename(subject = X)
+
+# preparing generalization data
+gen_velden_long <- gen_velden %>%
+  rowwise() %>%
+  dplyr::mutate(vel0den1 = mean(c_across(c(X0, X1, X2, X3, X4)), na.rm = TRUE),
+                vel1den2 = mean(c_across(c(X5, X6, X7, X8, X9)), na.rm = TRUE),
+                vel2den1 = mean(c_across(c(X10, X11, X12, X13, X14)), na.rm = TRUE),
+                vel0den2 = mean(c_across(c(X15, X16, X17, X18, X19)), na.rm = TRUE),
+                vel1den1 = mean(c_across(c(X20, X21, X22, X23, X24)), na.rm = TRUE),
+                vel2den2 = mean(c_across(c(X25, X26, X27, X28, X29)), na.rm = TRUE)) %>%
+  ungroup() %>%
+  select(!(X0:X29)) %>%
+  pivot_longer(!X, names_to = "set", values_to = "z") %>%
+  add_column(type = "generalization", .after = "X") %>%
+  add_column(vel = rep(rep(c(0, 1, 2),2), nrow(gen_velden)), .after = "type") %>%
+  add_column(den = rep(rep(c(1, 2),3), nrow(gen_velden)), .after = "vel") %>%
+  select(!set) %>%
+  dplyr::rename(subject = X)
+
+# merging validation and generalization data
+data_velden = rbind(val_velden_long, gen_velden_long)
+
+# changing order of levels for factor type
+data_velden$type <- factor(data_velden$type, levels = c("validation", "generalization"))
+
+# Turn velocity and density into factors and use correct labels
+data_velden$vel = ordered(c("zero", "slow", "fast")[data_velden$vel+1], levels = c("zero", "slow", "fast"))
+data_velden$den = ordered(c("few", "many")[data_velden$den], levels = c("few", "many"))
+
+# save velocity-density combination data (validation & generalization)
+save(data_velden, file = file.path(dir.data.group, "data_velden.Rda"))
+
+```
+

@@ -1,0 +1,1094 @@
+---
+title: "Analysis: A common neural mechanism underlies experiences of passage of time"
+author:
+- Mathis Jording, Mark Wünsche, Megha Madathil, David H.V. Vogel,
+- Shivakumar Viswanathan, Kai Vogeley
+date: "`r format(Sys.time(), '%d.%m.%y')`"
+output:
+  pdf_document:
+    keep_tex: true
+  pdf: default
+header-includes:
+- \usepackage{float}
+- \usepackage{fvextra}
+- \usepackage{color}
+- \DefineVerbatimEnvironment{Highlighting}{Verbatim}{ commandchars=\\\{\}, breaklines,
+  breakanywhere, fontsize=\small }
+- \DefineVerbatimEnvironment{verbatim}{Verbatim}{ breaklines, breakanywhere, fontsize=\small
+  }
+params:
+  output_dir: D:/EEGST data/output
+---
+
+
+<!--- Markdown settings -->
+```{r setup, include=FALSE}
+
+# set size of figures
+fig_width = 160
+fig_height = 100
+
+knitr::opts_chunk$set(echo = FALSE,
+                      fig.align = 'center',
+                      fig_crop = FALSE,
+                      fig.pos = "H",
+                      fig.width = fig_width / 25.4,
+                      fig.height = fig_height / 25.4)
+
+```
+
+<!--- Packages -->
+```{r Packages, include = FALSE, message=FALSE, warning=FALSE}
+# Change 'message=TRUE' & 'warning=TRUE' for messages and warnings
+
+# Core
+library("knitr")
+library("grid")
+
+# Modeling / statistics
+library("lme4")
+library("emmeans")
+library("psych")
+
+# Data manipulation
+library("plyr")
+library("tidyverse")  # loads dplyr, ggplot2, tibble, etc.
+
+# Plotting
+library("ggsignif")
+library("gridExtra")
+library("ggh4x")
+library("scales")
+library("ggforce")
+library("gridExtra")
+library("egg")
+library("gtable")
+
+# Utilities
+library("Rmisc")
+```
+
+<!--- Directories and settings -->
+```{r directories, results="hide"}
+# data folders
+#dir.data = file.path("D:", "EEGST data")
+
+dir.data = file.path("C:", "Eigene Dateien", "1. Projekte", "Virtualtimes",
+                     "Projekte und Studien", "sfct VR EEG", "Manuscript & publication",
+                     "white paper", "upload", "data")
+
+# output folders (this can be changed if output should be stored somewhere else)
+#dir.output = file.path(dir.data, "output")
+
+dir.output = file.path("C:", "Eigene Dateien", "1. Projekte", "Virtualtimes",
+                       "Projekte und Studien", "sfct VR EEG", "Manuscript & publication",
+                       "white paper", "upload", "output")
+
+```
+
+<!--- Settings for plot aesthetics -->
+```{r output_settings, include=FALSE}
+
+# Plot settings
+print_as = ".png"
+dpi_pngs = 300
+height_prediction_plots = 8
+
+# Color for RS - Starfield comparison
+colors_rs = "#d6b900"
+colors_sf_diff = "#00c1ffff"
+colors_sf_same = "#bc11a0ff"
+
+# Colors for non-matching sf pairs
+colors_diff = "#888888"
+# Colors for matching levels of velocity / density
+colors_vel = c("#ff9666", "#ff5100", "#993000")
+colors_den = c("#28cc00", "#146600")
+
+# Colors for Validation - generalization comparisons
+colors.val_gen = c("dodgerblue", "darkorange")
+
+
+# position dodge for PoTJ plots
+dodge_potj = .3
+
+# Position dodge for validation / crossvalidation plots
+dodge_val_gen = .25
+
+
+
+
+# Aesthetics
+theme_grid = theme(plot.title = element_text(size=10, face ="bold", family = "sans",
+                                             margin = margin(t = 0, r = 0, b = 20, l = 0),
+                                             hjust = 0.5),
+                   axis.title.x = element_text(size = 9),
+                   axis.title.y = element_text(size = 9),
+                   axis.text.x = element_text(size = 8),
+                   axis.text.y = element_text(size = 8),
+                   
+                   axis.ticks = element_line(linewidth = 0.05),
+                   axis.line = element_line(colour = "black"),
+                   plot.margin = margin(t = 2, r = 2, b = 2, l = 2,
+                                        unit = "mm"),
+                   # legend
+                   legend.title = element_text(size = 9),
+                   legend.text = element_text(size = 8),
+                   legend.key.size = unit(4, "mm"),
+                   
+                   #legend.margin = margin(0, 0.01, 0, 0, unit = "npc"),
+                   #legend.box.margin = margin(0,0.005,0,0, unit= "npc"),
+                   # panel and background
+                   panel.background = element_blank(),
+                   panel.grid.major.x = element_blank(),
+                   panel.grid.minor.x = element_blank(),
+                   panel.grid.major.y = element_line(linewidth=.05, color="lightgrey"), 
+                   panel.spacing = unit(2, "lines"))
+
+
+# setting number of digits for all prints to 2
+options(digits = 3)
+```
+
+<!--- Functions -->
+```{r function_p_annotation(), include = FALSE}
+
+# p_annotation(): Function that outputs annotations of significance level as ***, **, * or 'n.s.'
+
+p_annotation <- function(p_value){
+  if (p_value <.001) {
+    p_annot = "***"
+  } else if (p_value <.01) {
+    p_annot = "**"
+  } else if (p_value <.05) {
+    p_annot = "*"
+  } else {
+    p_annot = "n.s."
+  }
+  return(p_annot)
+}
+```
+
+<!--- Loading data -->
+```{r loading_data, include = FALSE, results="hide"}
+
+# load dataframe 'data.subjects'
+load(file = file.path(dir.data, "data.subjects.Rda"))
+
+# load dataframe 'data.subjects_excluded'
+load(file = file.path(dir.data, "data.subjects_excluded.Rda"))
+
+# load dataframe 'data.trials'
+load(file = file.path(dir.data, "data.trials.Rda"))
+
+
+
+
+```
+
+
+
+# Descriptive Statistics
+
+## Data availability
+```{r data_availability, comment = ""}
+
+excluded_missing_data = subset(data.subjects_excluded, available_nc_snapshots_pro <0.75)
+excluded_subjects = unique(data.subjects_excluded$subject)
+
+# excluded_missing_data = subset(data.subjects_allcon, available_nc_snapshots_pro <0.75)
+# excluded_subjects = unique(excluded_missing_data$subject)
+
+# Build statement about subjects excluded due to missing data
+sample_exclusion_statement = ""
+if (length(excluded_subjects) > 0) {
+  sample_exclusion_statement = paste("Excluded subjects due to missing data:", length(excluded_subjects))
+  
+  for (i in 1:length(excluded_subjects)){
+    subject = excluded_missing_data[i,]
+    
+    subject_exclusion_statement = paste("  ", i, ": ",
+                                        "available snapshots: ", subject$available_nc_snapshots, " / 540 ",
+                                        "(", round(subject$available_nc_snapshots_pro*100, 2), "%)", sep = "")
+    
+    sample_exclusion_statement = paste(sample_exclusion_statement,
+                                       subject_exclusion_statement,
+                                       sep = "\n")
+  }
+}else {subject_exclusion_statement = "No subjects excluded due to missing data"}
+
+
+# Available rs snapshots remaining subjects
+available_rs_statement = paste("  - remaining RS snapshots: M = ", 
+                               round(mean(data.subjects$available_rs_snapshots),2),
+                               " / 300 (",
+                               round(mean(data.subjects$available_rs_snapshots_pro * 100),2),
+                               "%; SD = ",
+                               round(sd(data.subjects$available_rs_snapshots),2),
+                               ", min = ",
+                               min(data.subjects$available_rs_snapshots),
+                               ", max = ",
+                               max(data.subjects$available_rs_snapshots),
+                               ")\n     -> In total, ",
+                               sum(data.subjects$available_rs_snapshots),
+                               " RS snapshots available for analysis",
+                               sep = "")
+
+# Available rs snapshots remaining subjects
+available_sf_statement = paste("  - remaining SF snapshots: M = ", 
+                               round(mean(data.subjects$available_nc_snapshots),2),
+                               " / 540 (",
+                               round(mean(data.subjects$available_nc_snapshots_pro * 100),2),
+                               "%; SD = ",
+                               round(sd(data.subjects$available_nc_snapshots),2),
+                               ", min = ",
+                               min(data.subjects$available_nc_snapshots),
+                               ", max = ",
+                               max(data.subjects$available_nc_snapshots),
+                               ")\n     -> In total, ",
+                               sum(data.subjects$available_nc_snapshots),
+                               " SF snapshots available for analysis",
+                               sep = "")
+
+
+# print statements about data availability
+cat(paste(sample_exclusion_statement,
+          "\n\n",
+          "Remaining subjects: ", sum(data.subjects$included == TRUE), "\n",
+          available_rs_statement,
+          "\n",
+          available_sf_statement,
+          sep = ""))
+
+
+```
+
+## Demografic data
+```{r descriptive_statistics, comment = ""}
+
+# building dataframe for demografic data with one row per subject
+sample_info = data.subjects[,c('subject', 'gender', 'age', 'handedness', 'aq', 'bdi', 'css')]
+
+# Compute descriptive statistics of group info as dataframe
+group_stats = describe(sample_info)
+
+# List occurrences of gender
+gender_table = table(sample_info$gender)
+# List occurrences of handedness
+handedness_table = table(sample_info$handedness)
+
+# print gender, handedness and age info for group
+cat(paste(gender_table[1], " Participants identified as female, ", gender_table[2], " as male\n",
+          handedness_table["right"], " Participants identified as right-handed, ", handedness_table["left"], " as left-handed\n",
+          "Age: mean = ", round(group_stats["age", "mean"],2), ", sd = ", round(group_stats["age", "sd"],2), "; ",
+          "min = ", group_stats["age", "min"], ", max = ", group_stats["age", "max"], sep = ""))
+
+```
+
+
+
+\newpage
+# Behavioral analysis
+
+## Checking color rating accuracies
+```{r color_rating_acc, comment = ""}
+# for each trial keep the last entry (substring) from the color log to determine the last color (change)
+last_colorchange_per_trial <- unlist(lapply(strsplit(data.trials$color_log, ","), tail, n = 1L))
+
+# for each color (change) keep the last letter to determine the predominant color (r, g, b)
+last_color_per_trial <- unlist(lapply(strsplit(last_colorchange_per_trial, ":"), tail, n = 1L))
+
+# for each trial, keep only the first letter from the answer to the color rating (r, g, b)
+colorrating <- unlist(lapply(substr(data.trials$color_rating, start = 1, stop = 1), tolower))
+
+# for each trial, compare predominant color and color rating 
+data.trials$colorrating_correct = last_color_per_trial == colorrating
+
+# for each subject compute the over all color rating accuracy
+data.trials.ratingaccuracy = data.trials %>%
+  dplyr::group_by(subject) %>%
+  dplyr::summarize(accuracy = mean(colorrating_correct))
+
+# add color rating accuracy information to data.subjects
+data.subjects <- merge(x = data.subjects, y = data.trials.ratingaccuracy, by = "subject", all.x = TRUE)
+
+# Print information about color tracking accuracy
+cat(paste("Color rating accuracy over whole sample: ",
+          "M = ", round(describe(data.subjects$accuracy)[[3]],2), ", SD = ", round(describe(data.subjects$accuracy)[[4]],2),
+          "; Min = ", describe(data.subjects$accuracy)[[8]],  ", Max = ", describe(data.subjects$accuracy)[[9]],
+          sep = ""))
+```
+
+
+## Effect of velocity and density on potjs
+```{r analysing_PoTJs, fig.cap = "Participant-wise PoTJs (y-axis) averaged for each variant of Velocity (x-axis) and Density (colors). Participants averages are depicted as small, transparent circles, group averages per level are depicted as bigger opaque circles, 95% within-participant confidence intervals are shown as error bars. Pairwise comparisons revealed significant differences between all variants with different Velocity levels and between low and high Density when Velocity was slow or fast but not zero (* < 0.05; ** < 0.01, *** < 0.001, n.s.: not significant)."}
+# Likelihood-Ratio test for effects of velocity and density 
+lms.0 <- lmer(PoTJ ~ 1 + (1 | subject), data = data.trials, REML = FALSE)
+lms.vel <- lmer(PoTJ ~ as.numeric(velocity) + (1 | subject), data = data.trials, REML = FALSE)
+lms.velden <- lmer(PoTJ ~ as.numeric(velocity) + as.numeric(density) + (1 | subject), data = data.trials, REML = FALSE)
+lms.velxden <- lmer(PoTJ ~ as.numeric(velocity) * as.numeric(density) + (1 | subject), data = data.trials, REML = FALSE)
+anova.potj = anova(lms.0, lms.vel, lms.velden, lms.velxden)
+
+# Conduct pairwise comparison between all condition combinations (tukey-test, 'emmeans'-package) --> suppl
+lms.velxden <- lmer(PoTJ ~ velocity * density + (1 | subject), data = data.trials)
+pairwise_results_all = lsmeans(lms.velxden, pairwise ~ velocity:density, pbkrtest.limit = 3150)
+
+# Save tables as dataframes
+table_anova <- as.data.frame(anova.potj)
+table_coefficients <- as.data.frame(summary(lms.velxden)$coefficients)
+table_pairwise <- as.data.frame(pairwise_results_all$contrasts)
+
+saveRDS(
+  list(anova = table_anova,
+       coefficients = table_coefficients,
+       pairwise = table_pairwise
+  ),
+  file = file.path(dir.output, "tables", "tables_potj.rds")
+)
+
+# Printing results as tables
+knitr::kable(table_anova,
+             caption = "Likelihood-Ratio test for effects of velocity and density")
+
+knitr::kable(table_coefficients,
+             caption = "Model summary velxden")
+
+knitr::kable(table_pairwise,
+             caption = "Pairwise comparisons of PoTJs (Tukey corrected)",
+             digits = 3)
+```
+
+<!--- Plotting PoTJs -->
+```{r plotting_PoTJs, fig.cap = "Participant-wise PoTJs (y-axis) averaged for each variant of Velocity (x-axis) and Density (colors). Participants averages are depicted as small, transparent circles, group averages per level are depicted as bigger opaque circles, 95% within-participant confidence intervals are shown as error bars. Pairwise comparisons revealed significant differences between all variants with different Velocity levels and between low and high Density when Velocity was slow or fast but not zero (* < 0.05; ** < 0.01, *** < 0.001, n.s.: not significant)."}
+# create dataframe with participant means (per condition combination)
+data.trials_avg <- data.trials %>%
+  dplyr::group_by(subject, velocity, density) %>%
+  dplyr::summarize(mean_potj = mean(PoTJ), .groups = "drop")
+
+# compute within-subject cls
+dfwc_potj_vel <- summarySEwithin(data.trials, measurevar="PoTJ", withinvars=c("velocity", "density"),
+                        idvar="subject", na.rm=TRUE, conf.interval=.95)
+
+# Effects of velocity on PoTJs in controls
+plot_potjs = ggplot(data=data.trials, aes(x = velocity, y = PoTJ, group = density, color = density)) +
+  geom_point(data = data.trials_avg, aes (x = velocity, y = mean_potj, group = density, color = density, fill = density),
+             shape=16, size = 2, alpha = .2, position = position_dodge(width = dodge_potj)) +
+  xlab("Velocity")+
+  ylab("PoTJ")+
+  geom_errorbar(data = dfwc_potj_vel, width=.3, aes(ymin=PoTJ-ci, ymax=PoTJ+ci), position = position_dodge(width = dodge_potj)) +
+  geom_point(data = dfwc_potj_vel, shape=21, size=3, aes(x = velocity, y = PoTJ, group = density, fill = density), position = position_dodge(width = dodge_potj)) +
+  theme_grid+
+  scale_y_continuous(limits=c(0,1.1), breaks=seq(0,1, by = .25))+
+  coord_cartesian(expand=FALSE, clip="off")
+
+# add annotations for pairwise comparisons
+plot_potjs <- plot_potjs +
+  # add lines
+  annotate("segment", x = c(1, 2, (1-(dodge_potj/4)), (2-(dodge_potj/4)), (3-(dodge_potj/4))), xend = c(2, 3, (1+(dodge_potj/4)), (2+(dodge_potj/4)), (3+(dodge_potj/4))),
+           y = c(1.07, 1.07, 0.97, 0.97, 0.97), yend = c(1.07, 1.07, 0.97, 0.97, 0.97),
+           colour = "black", linewidth=0.5)+
+  # add asterics annotations
+  annotate("text", x = c(1.5, 2.5, 2, 3), y = c(1.09, 1.09, 0.99, 0.99),
+           label = c("***", "***", "*", "*"), size = 6)+
+
+  # add 'n.s.' annotations (needs smaller font)
+  annotate("text", x = c(1), y = c(1.01),
+           label = c("n.s."), size = 4)+
+  # add ticks
+  annotate("segment", x = c(1, 2, 3, (1-(dodge_potj/4)), (1+(dodge_potj/4)), (2-(dodge_potj/4)), (2+(dodge_potj/4)), (3-(dodge_potj/4)), (3+(dodge_potj/4))),
+           xend = c(1, 2, 3, (1-(dodge_potj/4)), (1+(dodge_potj/4)), (2-(dodge_potj/4)), (2+(dodge_potj/4)), (3-(dodge_potj/4)), (3+(dodge_potj/4))),
+         y = c(1.07, 1.07, 1.07, 0.97, 0.97, 0.97, 0.97, 0.97, 0.97), yend = c(1.05, 1.05, 1.05, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95),
+         color = "black", linewidth=0.5)
+
+ggsave(plot = plot_potjs,
+       filename = "fig2_potjs.png", path = dir.output,
+       width = fig_width, height = fig_height * 0.8, units = "mm", dpi = dpi_pngs)
+
+plot_potjs
+```
+**$\Rightarrow$ Passage of time experience varies with starfield visual features**
+
+\newpage
+# EEG analysis
+
+## Occipital power differences between RS and SF
+
+```{r data_face_validity, include=TRUE}
+
+# Load dataframe 'data.epochs.occamp'
+load(file = file.path(dir.data, "data.epochs.occamp.Rda"))
+
+# statistics
+lms.postamp.0 <- lmer(posterior_meanamp ~ 1 + (1 | subject), data = data.epochs.occamp, REML = FALSE)
+lms.postamp.1 <- lmer(posterior_meanamp ~ condition + (1 | subject), data = data.epochs.occamp, REML = FALSE)
+anova.postamp = anova(lms.postamp.0, lms.postamp.1)
+
+# Save tables as dataframes
+table_anova <- as.data.frame(anova.postamp)
+table_coefficients <- as.data.frame(summary(lms.postamp.1)$coefficient)
+
+saveRDS(
+  list(anova = table_anova,
+       coefficients = table_coefficients
+  ),
+  file = file.path(dir.output, "tables", "tables_postamp.rds")
+)
+
+# Printing results as tables
+knitr::kable(table_anova,
+             caption = "Likelihood-Ratio test mean amplitude in posterior channels")
+
+knitr::kable(table_coefficients,
+             caption = "Model summary postamp.1")
+
+```
+
+**$\rightarrow$ Reduced alpha power in the task-state compared to RS in occiptial channels**
+
+\newpage
+
+
+## Epoch feature correlations
+```{r feat_corr_rs_sf}
+
+# load dataframe "group_corrs"
+load(file = file.path(dir.data, "epoch_feature_correlations.Rda"))
+
+
+# exclude diagonal (correlations between epochs of same type (same velocity & same density))
+group_corrs_norspairs = subset(group_corrs, !(comparison == "RS - RS"))
+
+
+# =====
+# Analysis
+
+# rs vs. starfield
+lms.featurecorrelations.type.0 <- lmer(corr ~ 1 + (1 | subject), data = group_corrs_norspairs, REML = FALSE)
+lms.featurecorrelations.type.1 <- lmer(corr ~ 1 + comparison + (1 | subject), data = group_corrs_norspairs, REML = FALSE)
+anova.featurecorrelations.type <- anova(lms.featurecorrelations.type.0, lms.featurecorrelations.type.1)
+
+# Conduct pairwise comparison (tukey-test, 'emmeans'-package) --> suppl
+pairwise_comparison_similarity = lsmeans(lms.featurecorrelations.type.1, pairwise ~ comparison)
+
+
+
+
+# Save tables as dataframes
+table_anova <- as.data.frame(anova.featurecorrelations.type)
+table_pairwise <- as.data.frame(pairwise_comparison_similarity$contrasts)
+
+saveRDS(
+  list(anova = table_anova,
+       coefficients = table_coefficients,
+       pairwise = table_pairwise
+  ),
+  file = file.path(dir.output, "tables", "tables_featurecorrelations.rds")
+)
+
+
+
+# Printing tables
+knitr::kable(table_anova,
+             caption = "Likelihood-Ratio of feature correlations")
+
+knitr::kable(table_pairwise$contrasts,
+             caption = "Pairwise comparisons of feature similarity (Tukey corrected)",
+             digits = 3)
+```
+
+
+
+```{r plotting_feat_corrs_rs_sf, fig.cap = "Boxplots of epoch feature correlations showing the significantly increasing similarity from RS – SF pairs (yellow) to SF pairs of different variants (blue) to SF pairs of the same variant (purple). Circles: Participant-wise averaged epoch feature correlation. Boxplots: middle line: median; hinges: 25% - 75%-quantile; whiskers: smallest value below 25%-quantile and largest values above 75%-quantile within 1.5 x inter-quartile-range. Significance levels of t-tests: * < 0.05; ** < 0.01, *** < 0.001, n.s.: not significant."}
+# =====
+# Plotting
+
+
+p_value.rs_sf_diff = broom::tidy(pairwise_comparison_similarity$contrasts)[1,"adj.p.value"]
+p_annot.rs_sf_diff = p_annotation(p_value.rs_sf_diff)
+
+p_value.sf_diff_sf_same = broom::tidy(pairwise_comparison_similarity$contrasts)[3,"adj.p.value"]
+p_annot.sf_diff_sf_same = p_annotation(p_value.sf_diff_sf_same)
+
+ylimits = c(0.6, 0.95)
+
+# prepare dataframe for plotting
+plotting_data.task = group_corrs_norspairs %>%
+  dplyr::group_by(subject, comparison) %>%
+  dplyr::summarize(corr = mean(corr), .groups = "drop")
+
+
+plot_feature_corrs.task = ggplot(data= plotting_data.task, aes(x = comparison, y = corr)) +
+  geom_point(aes(color = comparison),
+             shape=16, size = 3, alpha = .3) +
+  geom_line(aes(group = subject), alpha = .1, color = "black")+
+  geom_boxplot(width = .3, alpha = 0) +
+  ylim(ylimits)+
+  geom_signif(comparisons = list(c("RS - SF", "Diff. SF")),
+              annotation = c(p_annot.rs_sf_diff), tip_length = 0.03,
+              margin_top = 0.1, extend_line = -.005,
+              color = "black", textsize = 6)+
+  geom_signif(comparisons = list(c("Diff. SF", "Same SF")),
+              annotation = c(p_annot.sf_diff_sf_same), tip_length = 0.03,
+              margin_top = 0.1, extend_line = -.005,
+              color = "black", textsize = 6)+
+  scale_fill_manual(values=c(colors_rs, colors_sf_diff, colors_sf_same))+
+  scale_color_manual(values=c(colors_rs, colors_sf_diff, colors_sf_same))+
+  theme_grid+
+  theme(legend.position="none",
+        axis.title.x=element_blank())
+
+
+ggsave(plot = plot_feature_corrs.task,
+       filename = "fig4b_feature_corrs_task.png", path = dir.output,
+       width = fig_width / 3, height = fig_height, units = "mm", dpi = dpi_pngs)
+
+plot_feature_corrs.task
+```
+
+**$\rightarrow$ Starfield epochs more similar to other starfield epochs than to RS epochs**
+
+**$\rightarrow$ Starfield epochs from same variant more similar than from different variants**
+
+\newpage
+
+
+```{r feat_corr_sf_variants}
+# -----
+# VELOCITY
+
+# comparing between different pairs and same velocity pairs
+group_corrs.same_vel = subset(group_corrs, sameden == FALSE)
+
+lms.featurecorrelations.same_vel.0 <- lmer(corr ~ 1 + (1 | subject), data = group_corrs.same_vel, REML = FALSE)
+lms.featurecorrelations.same_vel.1 <- lmer(corr ~ 1 + samevel + (1 | subject), data = group_corrs.same_vel, REML = FALSE)
+anova.featurecorrelations.same_vel <- anova(lms.featurecorrelations.same_vel.0, lms.featurecorrelations.same_vel.1)
+
+kable(anova.featurecorrelations.same_vel, caption = "Likelihood-Ratio Test: comparing epoch feature similarity between different and same velocity", digits = 3)
+
+
+
+# comparing between zero, low and high velocity pairs
+group_corrs.vel = subset(group_corrs.same_vel, samevel == TRUE)
+
+lms.featurecorrelations.vel.0 <- lmer(corr ~ 1 + (1 | subject), data = group_corrs.vel, REML = FALSE)
+lms.featurecorrelations.vel.1 <- lmer(corr ~ 1 + as.numeric(velocity) + (1 | subject), data = group_corrs.vel, REML = FALSE)
+anova.featurecorrelations.vel <- anova(lms.featurecorrelations.vel.0, lms.featurecorrelations.vel.1)
+
+kable(anova.featurecorrelations.vel, caption = "Likelihood-Ratio Test: comparing epoch feature similarity between velocity variants", digits = 3)
+
+
+# -----
+# DENSITY
+
+# comparing between different pairs and same density pairs
+group_corrs.same_den = subset(group_corrs, samevel == FALSE)
+
+lms.featurecorrelations.same_den.0 <- lmer(corr ~ 1 + (1 | subject), data = group_corrs.same_den, REML = FALSE)
+lms.featurecorrelations.same_den.1 <- lmer(corr ~ 1 + sameden + (1 | subject), data = group_corrs.same_den, REML = FALSE)
+anova.featurecorrelations.same_den <- anova(lms.featurecorrelations.same_den.0, lms.featurecorrelations.same_den.1)
+
+kable(anova.featurecorrelations.same_den, caption = "Likelihood-Ratio Test: comparing epoch feature similarity between different and same density", digits = 3)
+
+
+# comparing between zero, low and high density pairs
+group_corrs.den = subset(group_corrs.same_den, sameden == TRUE)
+
+lms.featurecorrelations.den.0 <- lmer(corr ~ 1 + (1 | subject), data = group_corrs.den, REML = FALSE)
+lms.featurecorrelations.den.1 <- lmer(corr ~ 1 + as.numeric(density) + (1 | subject), data = group_corrs.den, REML = FALSE)
+anova.featurecorrelations.den <- anova(lms.featurecorrelations.den.0, lms.featurecorrelations.den.1)
+
+kable(anova.featurecorrelations.den, caption = "Likelihood-Ratio Test: comparing epoch feature similarity between density variants", digits = 3)
+
+
+
+# Save tables as dataframes
+table_anova.same_vel <- as.data.frame(anova.featurecorrelations.same_vel)
+table_anova.vel <- as.data.frame(anova.featurecorrelations.vel)
+table_anova.same_den <- as.data.frame(anova.featurecorrelations.same_den)
+table_anova.den <- as.data.frame(anova.featurecorrelations.den)
+
+
+saveRDS(
+  list(anova_same_vel = table_anova.same_vel,
+       anova_vel = table_anova.vel,
+       anova_same_den = table_anova.same_den,
+       anova_den = table_anova.den
+  ),
+  file = file.path(dir.output, "tables", "tables_featcorrs_variants.rds")
+)
+
+
+```
+
+
+```{r plotting_feat_corr_sf_variants, fig.cap = "Boxplots of epoch feature correlations showing a significant increase of similarity for same velocity SF pairs (orange) and same density SF pairs (green) compared to different velocity and density pairs (grey) as well as a significantly increased similarity for higher velocities pairs compared to lower velocity pairs (light to dark orange). Circles: Participant-wise averaged epoch feature correlation. Boxplots: middle line: median; hinges: 25% - 75%-quantile; whiskers: smallest value below 25%-quantile and largest values above 75%-quantile within 1.5 x inter-quartile-range. Significance levels of t-tests: * < 0.05; ** < 0.01, *** < 0.001, n.s.: not significant."}
+# ----------
+# plotting - combined plot
+
+# delete all correlations with rs epochs
+plotting_data.corrs_conditions = subset(group_corrs, !(cond_a == "rs" | cond_b == "rs"))
+
+# delete all correlations where velocity and density are the same on both sides (diagonal)
+plotting_data.corrs_conditions = subset(plotting_data.corrs_conditions, !(samevel & sameden))
+
+# add variable for stimulation intensity
+plotting_data.corrs_conditions$intensity = rep(0, nrow(plotting_data.corrs_conditions))
+plotting_data.corrs_conditions$intensity[plotting_data.corrs_conditions$samevel] = plotting_data.corrs_conditions$velocity[plotting_data.corrs_conditions$samevel]
+plotting_data.corrs_conditions$intensity[plotting_data.corrs_conditions$sameden] = plotting_data.corrs_conditions$density[plotting_data.corrs_conditions$sameden]
+
+# prepare dataframe for plotting
+plotting_data.corrs_conditions = plotting_data.corrs_conditions %>%
+  dplyr::group_by(subject, similarity, intensity) %>%
+  dplyr::summarize(corr = mean(corr), .groups = "drop")
+
+#
+plotting_data.corrs_conditions$similarity = factor(plotting_data.corrs_conditions$similarity,
+                                                   labels = c("Diff. Vel. & Den.", "Same Velocity", "Same Density"))
+
+# create new variable with unique codes for each condition combination (similarity * intensity) 
+plotting_data.corrs_conditions$combinedconditions = interaction(as.ordered(plotting_data.corrs_conditions$intensity), plotting_data.corrs_conditions$similarity)
+plotting_data.corrs_conditions$combinedconditions = droplevels(plotting_data.corrs_conditions$combinedconditions)
+
+
+plotting_data.corrs_conditions$combinedconditions <- as.character(plotting_data.corrs_conditions$combinedconditions)
+
+new_levels = c(plotting_data.corrs_conditions$combinedconditions[1], "GAP1", plotting_data.corrs_conditions$combinedconditions[2:4], "GAP2", plotting_data.corrs_conditions$combinedconditions[5:6])
+
+
+new_labels = c("",
+               " ",
+               "zero", "slow", "fast",
+               "  ",
+               "few", "many")
+
+plotting_data.corrs_conditions$combinedconditions <- factor(plotting_data.corrs_conditions$combinedconditions, levels = new_levels, labels = new_labels)
+
+
+plot_feature_corrs_conditions <- ggplot(data = plotting_data.corrs_conditions, aes(x = combinedconditions, y = corr)) +
+  geom_point(aes(color = combinedconditions),
+             shape=16, size = 3, alpha = .3) +
+  geom_line(aes(group = subject), alpha = .1, color = "black")+
+  geom_boxplot(width = .4, alpha = .1) +
+  
+  # colors
+  scale_fill_manual(values=c(colors_diff, colors_vel[1], colors_vel[2], colors_vel[3], colors_den[1], colors_den[2])) +
+  scale_color_manual(values=c(colors_diff, colors_vel[1], colors_vel[2], colors_vel[3], colors_den[1], colors_den[2])) +
+  
+  scale_x_discrete(drop = FALSE, axis_labels <- c("Cond1", "", "Cond2", "Cond3", "Cond4", " ", "Cond5", "Cond6"))+
+  coord_cartesian(clip = "off") +
+  theme_grid +
+  theme(legend.position="none",
+        strip.background = element_blank(),
+        strip.placement = "outside",
+        axis.title.x=element_blank(),
+        plot.margin = margin(t = 2, r = 2, b = 7, l = 2,
+                                        unit = "mm"),
+        axis.ticks.length = unit(0, "pt"))
+
+
+# -----
+# Add markers for statistical tests
+
+# determine annotation for significance levels
+p_annot.same_vel = p_annotation(anova.featurecorrelations.same_vel$"Pr(>Chisq)"[2])
+p_annot.vel = p_annotation(anova.featurecorrelations.vel$"Pr(>Chisq)"[2])
+p_annot.same_den = p_annotation(anova.featurecorrelations.same_den$"Pr(>Chisq)"[2])
+p_annot.den = p_annotation(anova.featurecorrelations.den$"Pr(>Chisq)"[2])
+
+
+plot_feature_corrs_conditions <- plot_feature_corrs_conditions +
+  annotate("segment", x = c(1, 3, 1, 7), xend = c(4, 5, 7.5, 8), y = c(0.94, 0.92, 0.97, 0.95), yend = c(0.94, 0.92, 0.97, 0.95), colour = "black", linewidth=0.5)+
+  annotate("text", x = c(2.5, 4, 4.25), y = c(0.943, 0.923, 0.973), label = c(p_annot.same_vel, p_annot.vel, p_annot.same_den), size = 5)+
+  annotate("text", x = c(7.5), y = c(0.958), label = c(p_annot.den), size =3.5)
+    
+  
+# Add 2nd line of axis labels for similarity group
+plot_feature_corrs_conditions <- plot_feature_corrs_conditions+
+  annotation_custom(
+    grob = textGrob("Diff. Vel. & Den.", gp = gpar(fontsize = 9)),
+    xmin = 1, xmax = 1, ymin = 0.65, ymax = 0.65)+
+  annotation_custom(
+    grob = textGrob("Same Velocity", gp = gpar(fontsize = 9)),
+    xmin = 4, xmax = 4, ymin = 0.65, ymax = 0.65)+
+  annotation_custom(
+    grob = textGrob("Same Density", gp = gpar(fontsize = 9)),
+    xmin = 7.5, xmax = 7.5, ymin = 0.65, ymax = 0.65)
+
+plot_feature_corrs_conditions
+
+ggsave(plot = plot_feature_corrs_conditions,
+       filename = "fig4c_feature_corrs_variants.png", path = dir.output,
+       width = fig_width * 0.65, height = fig_height, units = "mm", dpi = dpi_pngs)
+
+```
+
+**$\rightarrow$ Increasing similarity between epochs with increasing velocity but not with increasing density**
+
+**$\Rightarrow$ Starfield variants induce distinctive oscillation states**
+
+\newpage
+
+
+## Prediction of PoT between velocity / density levels 
+
+```{r predictions_between_indv_levels, comment = ""}
+
+# load dataframe 'data_vel' containing validation & generalization between velocity levels 
+load(file = file.path(dir.data, "data_vel.Rda"))
+
+# create dataframe with averages over all velocity levels
+data_vel_avg = data_vel %>%
+  dplyr::group_by(subject, type) %>%
+  dplyr::summarize(z = mean(z, na.rm = TRUE), .groups = "drop")
+data_vel_avg$vel = "total"
+
+
+# load dataframe 'data_den' containing validation & generalization between density levels 
+load(file = file.path(dir.data, "data_den.Rda"))
+
+# create dataframe with averages over all density levels
+data_den_avg = data_den %>%
+  dplyr::group_by(subject, type) %>%
+  dplyr::summarize(z = mean(z, na.rm = TRUE), .groups = "drop")
+data_den_avg$den = "total"
+
+
+# =====
+# Analysis
+
+# -----
+# Analyse results from validation / generalization between velocity levels
+
+# compute average and perform t-test for validation / generalization
+ttest_validation_vel = t.test(data_vel_avg[data_vel_avg$type == "validation",]$z)
+ttest_generalization_vel = t.test(data_vel_avg[data_vel_avg$type == "generalization",]$z)
+
+ttest_validation_den = t.test(data_den_avg[data_den_avg$type == "validation",]$z)
+ttest_generalization_den = t.test(data_den_avg[data_den_avg$type == "generalization",]$z)
+
+
+#subset(data_vel, type = "generalization")
+
+# analyse differential effects of velocity levels
+lm_vel0 = lmer(z ~ 1 + (1 | subject), subset(data_vel, type == "generalization"), REML = FALSE)
+lm_vel1 = lmer(z ~ as.factor(vel) + (1 | subject), subset(data_vel, type == "generalization"), REML = FALSE)
+anova_vel = anova(lm_vel0, lm_vel1)
+
+# Conduct pairwise comparison between velocity levels (tukey-test, 'emmeans'-package)
+pairwise_comparison_vel = lsmeans(lm_vel1, pairwise ~ vel)
+
+# analyse differential effects of density levels
+lm_den0 = lmer(z ~ 1 + (1 | subject), subset(data_den, type == "generalization"), REML = FALSE)
+lm_den1 = lmer(z ~ as.factor(den) + (1 | subject), subset(data_den, type == "generalization"), REML = FALSE)
+anova_den = anova(lm_den0, lm_den1)
+
+# Conduct pairwise comparison between density (tukey-test, 'emmeans'-package) 
+pairwise_comparison_den = lsmeans(lm_den1, pairwise ~ den)
+
+
+
+# =====
+# Printing
+
+cat(paste("Testing cross-validation results within velocity conditions against zero:\n",
+          "t(", ttest_validation_vel[[2]], ") = ", ttest_validation_vel[[1]], ", p = ", ttest_validation_vel[[3]],
+          "\n\n",
+          "Testing generalization results between velocity conditions against zero:\n",
+          "t(", ttest_generalization_vel[[2]], ") = ", ttest_generalization_vel[[1]], ", p = ", ttest_generalization_vel[[3]],
+          "\n\n\n",
+          "Testing cross-validation results within density conditions against zero:\n",
+          "t(", ttest_validation_den[[2]], ") = ", ttest_validation_den[[1]], ", p = ", ttest_validation_den[[3]],
+          "\n\n",
+          "Testing generalization results between density conditions against zero:\n",
+          "t(", ttest_generalization_den[[2]], ") = ", ttest_generalization_den[[1]], ", p = ", ttest_generalization_den[[3]],
+          sep = ""))
+
+
+
+kable(anova_vel, caption = "Likelihood-Ratio Test: comparing information quality between Velocity variants", digits = 3)
+kable(pairwise_comparison_vel$contrasts,
+      caption = "Pairwise comparisons for velocity (Tukey corrected)",
+      digits = 3)
+
+kable(anova_den, caption = "Likelihood-Ratio Test: comparing information quality between Density variants", digits = 3)
+kable(pairwise_comparison_den$contrasts,
+      caption = "Pairwise comparisons for density (Tukey corrected)",
+      digits = 3)
+
+
+
+
+# Save tables as dataframes
+table_anova_vel <- as.data.frame(anova_vel)
+table_pairwise_vel <- as.data.frame(pairwise_comparison_vel$contrasts)
+table_anova_den <- as.data.frame(anova_den)
+table_pairwise_den <- as.data.frame(pairwise_comparison_den$contrasts)
+
+
+saveRDS(
+  list(anova_vel = table_anova_vel,
+       pairwise_vel = table_pairwise_vel,
+       anova_den = table_anova_den,
+       pairwise_den = table_pairwise_den
+  ),
+  file = file.path(dir.output, "tables", "tables_prediction_velden.rds")
+)
+
+
+```
+
+
+
+\newpage
+
+## Prediction accuracies between velocity levels 
+
+```{r plotting_predictions_vel, fig.cap = "Participant-wise averaged accuracy scores (z-standardized correlation coefficients between predicted and true PoTJs) for cross-validation (blue) and generalization (orange). For cross-validation, test-sets were composed of snapshots from the same Velocity variants. For generalization, we tested whether predictors trained on one variant of Velocity could predict PoTJs in the other Velocity variants. Left most column: averaged for all cross-validations and generalizations; Right columns: separate results for cross-validations within individual Velocity variants and averages for generalizations from ‘zero’ to ‘slow’/’fast’, from ‘slow’ to ‘zero’/’fast’ and from ‘fast’ to ‘zero’/’slow’. Each participants averages are depicted as small, transparent circles. Boxplot showing group median (middle line), 25% - 75% quantile (hinges) and the smallest value below 25% (lower whisker) and the largest value above the 75% quantile (upper whiskers) that are within 1.5 of the inter quartile range (distance between quantile 25% and 75%)."}
+
+# ------
+# Plotting accuracies of validation / generalization between velocity levels
+
+# Creating one dataset for plotting
+sep_data = cbind(data_vel, "level" = "Velocity level")
+avg_data = cbind(data_vel_avg, "level" = "Average")
+avg_data$vel = rep("", nrow(avg_data))
+data_vel_all = rbind(sep_data, avg_data)
+data_vel_all$level = factor(data_vel_all$level, levels = c("Average", "Velocity level"))
+
+
+# Plot average accuracy of validation and generalization for velocity
+predictionacc_vel_plot <- ggplot(data_vel_all, aes(x=vel, y=z, color = type, fill = type)) +
+
+  geom_point(shape = 16, size = 2, alpha = .3, position = position_dodge(width = dodge_val_gen), na.rm=TRUE) +
+  geom_boxplot(size = 0.5, alpha = 0, width = .2, position = position_dodge(width = dodge_val_gen), na.rm=TRUE)+
+  stat_summary(
+    data = subset(data_vel_all, level != "Average"),
+    fun = median,
+    geom = 'line',
+    aes(group = type, colour = type),
+    position = position_dodge(width = 0.15),
+    na.rm = TRUE
+  )+
+  geom_hline(yintercept=0, linetype="dashed", color = "darkgrey", linewidth = 0.5) +
+  ylim(-0.2,1) +
+  scale_fill_manual(values = c("validation" = colors.val_gen[1],
+                                "generalization" = colors.val_gen[2]))+
+  scale_color_manual(values = c("validation" = colors.val_gen[1],
+                                "generalization" = colors.val_gen[2]))+
+  ylab("Accuracy score (z-score)") +
+  facet_grid(~ level, switch = "x", scales = "free_x", space = "free_x")+
+  theme_grid+
+  theme(axis.title.x = element_blank(),
+        panel.grid.major.y = element_blank(),
+        legend.position = "none",
+        panel.spacing.x=unit(0.8, "lines"),
+        panel.spacing.y = unit(0, "lines"),
+        strip.text.x = element_text(margin = margin(t = 2, b = 2)),
+        strip.background = element_blank(),
+        strip.placement = "outside",
+        strip.switch.pad.grid = unit(2, "mm")
+)
+
+ggsave(plot = predictionacc_vel_plot,
+       filename = "fig6b_predictionacc_vel.png", path = dir.output,
+       width = fig_width, height = fig_height, units = "mm", dpi = dpi_pngs)
+
+predictionacc_vel_plot
+```
+
+**$\Rightarrow$ Oscillation-based prediction of PoT are independent of velocity**
+
+\newpage
+
+## Prediction accuracies between density levels 
+
+```{r plotting_predictions_den, fig.cap = "Participant-wise averaged accuracy scores (z-standardized correlation coefficients between predicted and true PoTJs) for cross-validation (blue) and generalization (orange). For cross-validation, test-sets were composed of snapshots from the same Density variants. For generalization, we tested whether predictors trained on one variant of Density could predict PoTJs in the other Density variants. Left most column: averaged for all cross-validations and generalizations; Right columns: separate results for cross-validations within individual Density variants and for generalizations from few to many and from many to few. Each participants averages are depicted as small, transparent circles. Boxplot showing group median (middle line), 25% - 75% quantile (hinges) and the smallest value below 25% (lower whisker) and the largest value above the 75% quantile (upper whiskers) that are within 1.5 of the inter quartile range (distance between quantile 25% and 75%)."}
+
+# ------
+# Plotting accuracies of validation / generalization between density levels
+
+# Creating one dataset for plotting
+sep_data = cbind(data_den, "level" = "Density level")
+avg_data = cbind(data_den_avg, "level" = "Average")
+avg_data$den = rep("", nrow(avg_data))
+data_den_all = rbind(sep_data, avg_data)
+data_den_all$level = factor(data_den_all$level, levels = c("Average", "Density level"))
+
+# Plot average accuracy of validation and generalization for density
+predictionacc_den_plot <- ggplot(data_den_all, aes(x=den, y=z, color = type, fill = type)) +
+
+  geom_point(shape = 16, size = 2, alpha = .3, position = position_dodge(width = dodge_val_gen), na.rm=TRUE) +
+  geom_boxplot(size = 0.5, alpha = 0, width = .2, position = position_dodge(width = dodge_val_gen), na.rm=TRUE)+
+  stat_summary(
+    data = subset(data_den_all, level != "Average"),
+    fun = median,
+    geom = 'line',
+    aes(group = type, colour = type),
+    position = position_dodge(width = 0.15),
+    na.rm = TRUE
+  )+
+  geom_hline(yintercept=0, linetype="dashed", color = "darkgrey", linewidth = 0.5) +
+  ylim(-0.2,1) +
+  scale_fill_manual(values = c("validation" = colors.val_gen[1],
+                                "generalization" = colors.val_gen[2]))+
+  scale_color_manual(values = c("validation" = colors.val_gen[1],
+                                "generalization" = colors.val_gen[2]))+
+  ylab("Accuracy score (z-score)") +
+  facet_grid(~ level, switch = "x", scales = "free_x", space = "free_x")+
+  theme_grid+
+  theme(axis.title.x = element_blank(),
+        panel.grid.major.y = element_blank(),
+        legend.position = "none",
+        panel.spacing.x=unit(0.8, "lines"),
+        panel.spacing.y = unit(0, "lines"),
+        strip.text.x = element_text(margin = margin(t = 2, b = 2)),
+        strip.background = element_blank(),
+        strip.placement = "outside",
+        strip.switch.pad.grid = unit(2, "mm"))
+
+ggsave(plot = predictionacc_den_plot,
+       filename = "fig6d_predictionacc_den.png", path = dir.output,
+       width = fig_width * 0.8, height = fig_height, units = "mm", dpi = dpi_pngs)
+
+predictionacc_den_plot
+```
+
+**$\Rightarrow$ Oscillation-based prediction of PoT are independent of density**
+\newpage
+
+
+## Prediction of PoT between velocity-density combinations 
+
+```{r predictions_between_level_comb, comment = ""}
+
+# load dataframe 'data_velden' containing validation & generalization between velocity-densiyt combinations 
+load(file = file.path(dir.data, "data_velden.Rda"))
+
+# create dataframe with averages over all velocity-density combinations
+data_velden_avg = data_velden %>%
+  dplyr::group_by(subject, type) %>%
+  dplyr::summarize(z = mean(z, na.rm = TRUE), .groups = "drop")
+
+data_velden_avg$velden = "total"
+
+
+
+# =====
+# Analysis
+
+# compute average and perform t-test for validation & generalization
+ttest_validation_comb = t.test(data_velden_avg[data_velden_avg$type == "validation",]$z)
+ttest_generalization_comb = t.test(data_velden_avg[data_velden_avg$type == "generalization",]$z)
+
+# analyse differential effects of velocity-density combinations
+lm_velden0 = lmer(z ~ 1 + (1 | subject), subset(data_velden, type == "generalization"), REML = FALSE)
+lm_velden1 = lmer(z ~ factor(vel) + (1 | subject), subset(data_velden, type == "generalization"), REML = FALSE)
+lm_velden2 = lmer(z ~ factor(vel) + factor(den) + (1 | subject), subset(data_velden, type == "generalization"), REML = FALSE)
+lm_velden3 = lmer(z ~ factor(vel) * factor(den) + (1 | subject), subset(data_velden, type == "generalization"), REML = FALSE)
+anova_comb = anova(lm_velden0, lm_velden1, lm_velden2, lm_velden3)
+
+# Conduct pairwise comparison between velocity-density combinations (tukey-test, 'emmeans'-package) --> suppl
+pairwise_comparison_comb = lsmeans(lm_velden3, pairwise ~ vel:den)
+
+
+# =====
+# Printing
+
+cat(paste("Testing cross-validation results within velocity conditions against zero:\n",
+          "t(", ttest_validation_comb[[2]], ") = ", ttest_validation_comb[[1]], ", p = ", ttest_validation_comb[[3]],
+          "\n\n",
+          "Testing generalization results between velocity conditions against zero:\n",
+          "t(", ttest_generalization_comb[[2]], ") = ", ttest_generalization_comb[[1]], ", p = ", ttest_generalization_comb[[3]],
+          sep = ""))
+
+
+kable(anova_comb, caption = "Likelihood-Ratio Test: comparing information quality between Velocity*Density combinations", digits = 3)
+kable(pairwise_comparison_comb$contrasts,
+      caption = "Pairwise comparisons for velocity-density combinations (Tukey corrected)",
+      digits = 3)
+
+
+
+# Save tables as dataframes
+table_anova <- as.data.frame(anova_comb)
+table_pairwise <- as.data.frame(pairwise_comparison_comb$contrasts)
+
+saveRDS(
+  list(anova = table_anova,
+       pairwise = table_pairwise
+  ),
+  file = file.path(dir.output, "tables", "tables_prediction_comb.rds")
+)
+
+
+```
+
+\newpage
+
+
+```{r, plotting_predictions_level_comb, fig.cap = "Participant-wise averaged accuracy scores (z-standardized correlation coefficients between predicted and true PoTJs) for cross-validation (blue) and generalization (orange) between variants of different Velocity and Density. For cross-validation, test-sets were composed of the same starfield variant. For generalization, we tested whether predictors trained with one variant could also predict PoTJs in the other variants. Left most column: averaged for all cross-validations and generalizations; Right columns: separate results for cross-validations within variants (blue) and averages for generalizations from each specific variant to all other variants (orange). Each participants averages are depicted as small, transparent circles. Boxplot showing group median (middle line), 25% - 75% quantile (hinges) and the smallest value below 25% (lower whisker) and the largest value above the 75% quantile (upper whiskers) that are within 1.5 of the inter quartile range (distance between quantile 25% and 75%)."}
+
+
+# ------
+# Plotting accuracies of validation / generalization between density levels
+
+# Creating one dataset for plotting
+
+# Change factor labels
+sep_data = cbind(data_velden, "level" = paste("Density:", as.character(data_velden$den)))
+sep_data = subset(sep_data, select = -c(den))
+
+levels(sep_data$vel) <- c("Velocity: zero", "Velocity: slow", "Velocity: fast")
+
+avg_data = cbind(data_velden_avg, "level" = "Average")
+avg_data = subset(avg_data, select = -c(velden))
+avg_data$vel = rep("", nrow(avg_data))
+
+data_velden_all = rbind(sep_data, avg_data)
+
+data_velden_all$level = factor(data_velden_all$level, ordered = TRUE, levels = c("Average", "Density: few", "Density: many"))
+
+
+# Plot average accuracy of validation and generalization for velocity
+predictionacc_velden_plot <- ggplot(data_velden_all, aes(x=vel, y=z, color = type, fill = type)) +
+
+  geom_point(shape = 16, size = 2, alpha = .3, position = position_dodge(width = 0.35), na.rm=TRUE) +
+  geom_boxplot(size = 0.5, alpha = 0, width = .3, position = position_dodge(width = 0.35), na.rm=TRUE)+
+  stat_summary(
+    data = subset(data_velden_all, level != "Average"),
+    fun = median,
+    geom = 'line',
+    aes(group = type, colour = type),
+    position = position_dodge(width = 0.35),
+    na.rm = TRUE
+  )+
+  geom_hline(yintercept=0, linetype="dashed", color = "darkgrey", linewidth = 0.5) +
+  ylim(-0.2,1) +
+  scale_fill_manual(values = c("validation" = colors.val_gen[1],
+                                "generalization" = colors.val_gen[2]))+
+  scale_color_manual(values = c("validation" = colors.val_gen[1],
+                                "generalization" = colors.val_gen[2]))+
+  ylab("Accuracy score (z-score)") +
+  facet_grid(~ level, switch = "x", scales = "free_x", space = "free_x")+
+  theme_grid+
+  theme(axis.text.x = element_text(size = 7),
+        axis.title.x = element_blank(),
+        panel.grid.major.y = element_blank(),
+        legend.position = "none",
+        panel.spacing.x=unit(0.8, "lines"),
+        panel.spacing.y = unit(0, "lines"),
+        strip.text.x = element_text(margin = margin(t = 2, b = 2)),
+        strip.background = element_blank(),
+        strip.placement = "outside",
+        strip.switch.pad.grid = unit(2, "mm"))
+
+
+ggsave(plot = predictionacc_velden_plot,,
+       filename = "fig7b_predictionacc_velden.png", path = dir.output,
+       width = fig_width, height = fig_height, units = "mm", dpi = dpi_pngs)
+
+predictionacc_velden_plot
+```
+
+**$\Rightarrow$ Oscillation-based prediction of PoT are independent of moment-to-moment change rate**
+

@@ -1,0 +1,20 @@
+# Ignore files related to API keys
+#.env
+
+
+# ignore
+.vscode
+.Rhistory
+
+# MNE Python:
+MNE Python/old_versions/
+MNE Python/preperation_scripts/
+
+# R:
+R/old_versions/
+.Rhistory
+
+# data
+data/group_level/feature_and_ratings.group.csv
+ 
+ 
