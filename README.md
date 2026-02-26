@@ -25,3 +25,4 @@
 ### How to use:
   - Copy raw data (OpenNeuro repository ds007454) to foler data/bids_dataset<br/>
   - Save data directory path as 'path_study_data' in *.ipynb scripts and as 'dir.data' in *.Rmd scripts<br/>
+  - anaylsis scripts require file 'feature_and_ratings.group.csv' created by script 1b 
